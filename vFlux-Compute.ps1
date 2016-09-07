@@ -3,10 +3,10 @@
     .NOTES
 	=========================================================================================================
         Filename:	vFlux-Compute.ps1
-        Version:	0.1c 
+        Version:	0.2 
         Created:	12/21/2015
-	Updated:	28March2016
-        Requires:       curl.exe for Windows (https://curl.haxx.se/download.html)
+	Updated:	7Sept2016
+	Requires:       PowerShell 3.0 or later.
 	Requires:       InfluxDB 0.9.4 or later.  The latest 0.10.x is preferred.
         Requires:       Grafana 2.5 or later.  The latest 2.6 is preferred.
 	Prior Art:      Based on the get-stat technique often illustrated by Luc Dekens
@@ -24,8 +24,6 @@
         This PowerCLI script supports InfluxDB 0.9.4 and later (including the latest 0.10.x).
         The InfluxDB write syntax is based on naf_perfmon_to_influxdb.ps1 by D'Haese Willem,
         which itself is based on MattHodge's Graphite-PowerShell-Functions.
-        Please note that we use curl.exe for InfluxDB line protocol writes.  This means you must
-        download curl.exe for Windows in order for Powershell to write to InfluxDB.
     
     .PARAMETER vCenter
         The name or IP address of the vCenter Server to connect to
@@ -66,7 +64,6 @@ Begin {
 
     ## User-Defined Influx Setup
     $InfluxStruct = New-Object -TypeName PSObject -Property @{
-	CurlPath = 'C:\Windows\System32\curl.exe';
         InfluxDbServer = '1.2.3.4'; #IP Address
         InfluxDbPort = 8086;
         InfluxDbName = 'compute';
@@ -80,6 +77,13 @@ Begin {
     $LogDir = 'C:\bin\logs'
     $LogName = 'vFlux-Compute.log'
     $ReadyMaxAllowed = .20  #acceptable %ready time per vCPU.  Typical max is .10 to .20.
+    
+    #####################################
+    ## No need to edit beyond this point
+    #####################################
+	
+    $authheader = "Basic " + ([Convert]::ToBase64String([System.Text.encoding]::ASCII.GetBytes("$($InfluxStruct.InfluxDbUser):$($InfluxStruct.InfluxDbPassword)")))
+    $uri = "http://$($InfluxStruct.InfluxDbServer):$($InfluxStruct.InfluxDbPort)/write?db=$($InfluxStruct.InfluxDbName)"
 
 }
 
@@ -147,23 +151,16 @@ Process {
                 $cluster = $vm.VMHost.Parent
                 [int64]$timestamp = (([datetime]::UtcNow)-(Get-Date -Date "1/1/1970")).TotalMilliseconds * 1000000 #nanoseconds since Unix epoch
 
-                ## Write to InfluxDB for this VM iteration
-                $InfluxStruct.MetricsString = ''
+                ## Add Metrics to string for this VM iteration
                 $InfluxStruct.MetricsString += "$measurement,host=$name,type=$type,vc=$vc,cluster=$cluster,instance=$instance,unit=$Unit,interval=$interval,numcpu=$numcpu,memorygb=$memorygb value=$value $timestamp"
                 $InfluxStruct.MetricsString += "`n"
-                $CurlCommand = "$($InfluxStruct.CurlPath) -u $($InfluxStruct.InfluxDbUser):$($InfluxStruct.InfluxDbPassword) -i -XPOST `"http://$($InfluxStruct.InfluxDbServer):$($InfluxStruct.InfluxDbPort)/write?db=$($InfluxStruct.InfluxDbName)`" --data-binary `'$($InfluxStruct.MetricsString)`'"
-                Invoke-Expression -Command $CurlCommand 2>&1
                             
                 ## If reporting on %ready, add a derived metric that evaluates the ready health
                 If($stat.MetricID -eq 'cpu.ready.summation' -and $rdyhealth) {
                     $measurement = 'cpu.ready.health.derived'
                     $value = $rdyhealth
-                    $CurlCommand = ''
-                    $InfluxStruct.MetricsString = ''
                     $InfluxStruct.MetricsString += "$measurement,host=$name,type=$type,vc=$vc,cluster=$cluster,instance=$instance,unit=$Unit,interval=$interval,numcpu=$numcpu,memorygb=$memorygb value=$value $timestamp"
                     $InfluxStruct.MetricsString += "`n"
-                    $CurlCommand = "$($InfluxStruct.CurlPath) -u $($InfluxStruct.InfluxDbUser):$($InfluxStruct.InfluxDbPassword) -i -XPOST `"http://$($InfluxStruct.InfluxDbServer):$($InfluxStruct.InfluxDbPort)/write?db=$($InfluxStruct.InfluxDbName)`" --data-binary `'$($InfluxStruct.MetricsString)`'"
-                    Invoke-Expression -Command $CurlCommand 2>&1
                     }
                             
             ## debug console output
@@ -216,12 +213,9 @@ Process {
                         $cluster = $vmhost.Parent
                         [int64]$timestamp = (([datetime]::UtcNow)-(Get-Date -Date "1/1/1970")).TotalMilliseconds * 1000000 #nanoseconds since Unix epoch
 
-                        ## Write to InfluxDB for this VMHost iteration
-                        $InfluxStruct.MetricsString = ''
+                        ## Add Metrics to string for this VM iteration
                         $InfluxStruct.MetricsString += "$measurement,host=$name,type=$type,vc=$vc,cluster=$cluster,instance=$instance,unit=$Unit,interval=$interval value=$value $timestamp"
                         $InfluxStruct.MetricsString += "`n"
-                        $CurlCommand = "$($InfluxStruct.CurlPath) -u $($InfluxStruct.InfluxDbUser):$($InfluxStruct.InfluxDbPassword) -i -XPOST `"http://$($InfluxStruct.InfluxDbServer):$($InfluxStruct.InfluxDbPort)/write?db=$($InfluxStruct.InfluxDbName)`" --data-binary `'$($InfluxStruct.MetricsString)`'"
-                        Invoke-Expression -Command $CurlCommand 2>&1
 
                 ## debug console output
                 If($ShowStats) {
@@ -233,7 +227,8 @@ Process {
             }
         }
     }
-
+    ## Fire contents of $InfluxStruct.MetricsString to InfluxDB
+    Invoke-RestMethod -Headers @{Authorization=$authheader} -Uri $uri -Method POST -Body $InfluxStruct.MetricsString
     Disconnect-VIServer '*' -Confirm:$false
     Write-Output -InputObject "Script complete.`n"
     If ($Logging -eq 'On') { Stop-Transcript }
