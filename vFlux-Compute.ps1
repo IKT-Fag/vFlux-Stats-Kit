@@ -5,7 +5,7 @@
         Filename:	vFlux-Compute.ps1
         Version:	0.2 
         Created:	12/21/2015
-	Updated:	7Sept2016
+	Updated:	12-December-2016
 	Requires:       PowerShell 3.0 or later.
 	Requires:       InfluxDB 0.9.4 or later.  The latest 0.10.x is preferred.
         Requires:       Grafana 2.5 or later.  The latest 2.6 is preferred.
@@ -13,6 +13,8 @@
         Prior Art:      Uses MattHodge's InfluxDB write protocol syntax 
 	Author:         Mike Nisk (a.k.a. 'grasshopper')
 	Twitter:	@vmkdaily
+    =========================================================================================================
+    Based on a fork from github.com/Here-Be-Dragons
 	=========================================================================================================
 	
     .SYNOPSIS
@@ -38,13 +40,15 @@
         Optionally show some debug info on the writes to InfluxDB
 
     .EXAMPLE
-    	vFlux-Compute.ps1 -vCenter <VC Name or IP> -ReportVMs
+    	Start-GatherVMWareStats -vcenter <ip> -Credential (Get-Credential) -ReportVMs
     	
     .EXAMPLE
-    	vFlux-Compute.ps1 -vCenter <VC Name or IP> -ReportVMHosts
+    	Start-GatherVMWareStats -vcenter <ip> -Credential (Get-Credential) -ReportVMHosts
 
 #>
 
+Function Start-GatherVMWareStats
+{
 [cmdletbinding()]
 param (
     [Parameter(Mandatory = $True)]
@@ -57,7 +61,9 @@ param (
     [switch]$ReportVMHosts,
 
     [Parameter(Mandatory = $False)]
-    [switch]$ShowStats
+    [switch]$ShowStats,
+
+    $Credential
 )
 
 Begin {
@@ -66,9 +72,9 @@ Begin {
     $InfluxStruct = New-Object -TypeName PSObject -Property @{
         InfluxDbServer = '1.2.3.4'; #IP Address
         InfluxDbPort = 8086;
-        InfluxDbName = 'compute';
-        InfluxDbUser = 'esx';
-        InfluxDbPassword = 'esx';
+        InfluxDbName = 'database';
+        InfluxDbUser = 'dbuser';
+        InfluxDbPassword = 'dbpassword';
         MetricsString = '' #emtpy string that we populate later.
     }
 
@@ -95,18 +101,21 @@ Process {
 
     ## Start Logging
     $dt = Get-Date -Format 'ddMMMyyyy_HHmm'
-    If (Test-Path -Path C:\temp) { $TempDir = 'C:\temp' } Else { $TempDir = Get-Path -Path $Env:TEMP }
+    If (Test-Path -Path C:\temp) { $TempDir = 'C:\temp' } Else { $TempDir = $Env:TEMP }
     If (!(Test-Path -Path $LogDir)) { $LogDir = $TempDir }
     If ($Logging -eq 'On') { Start-Transcript -Append -Path $LogDir\$LogName }
 
-    ## Get the PowerCLI snapin if needed
-    if ((Get-PSSnapin -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue) -eq $null) { Add-PSSnapin -Name VMware.VimAutomation.Core }
+    ## Load the PowerCLI module if needed
+    If ((Get-Module -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue) -eq $null)
+    {
+        Import-Module VMWare.VimAutomation.Core
+    }
 
     ## Connect to vCenter
-    Connect-VIServer $vCenter | Out-Null
+    Connect-VIServer $vCenter -Credential $Credential | Out-Null
     
     If (!$Global:DefaultVIServer -or ($Global:DefaultVIServer -and !$Global:DefaultVIServer.IsConnected)) {
-    Throw "vCenter Connection Required!"
+        Throw "vCenter Connection Required!"
     }
 
     Get-Datacenter | Out-Null # clear first slow API access
@@ -214,7 +223,7 @@ Process {
                         [int64]$timestamp = (([datetime]::UtcNow)-(Get-Date -Date "1/1/1970")).TotalMilliseconds * 1000000 #nanoseconds since Unix epoch
 
                         ## Add Metrics to string for this VM iteration
-                        $InfluxStruct.MetricsString += "$measurement,host=$name,type=$type,vc=$vc,cluster=$cluster,instance=$instance,unit=$Unit,interval=$interval value=$value $timestamp"
+                        $InfluxStruct.MetricsString += "$measurement,host=$name,type=$type,vc=$vc,cluster=$cluster,instance='null',unit=$Unit,interval=$interval value=$value $timestamp"
                         $InfluxStruct.MetricsString += "`n"
 
                 ## debug console output
@@ -233,3 +242,5 @@ Process {
     Write-Output -InputObject "Script complete.`n"
     If ($Logging -eq 'On') { Stop-Transcript }
 }
+}
+
