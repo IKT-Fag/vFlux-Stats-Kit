@@ -67,7 +67,7 @@ param (
     $InfluxDbServer,
 
     [Parameter(Mandatory = $True)]
-    $InfluxDbPort,
+    $InfluxDbPort = 8086,
 
     [Parameter(Mandatory = $True)]
     $InfluxDbName,
@@ -259,4 +259,22 @@ Process {
     Write-Output -InputObject "Script complete.`n"
     If ($Logging -eq 'On') { Stop-Transcript }
 }
+}
+
+
+$cred = Get-Credential
+
+while ($True)
+{
+    Start-GatherVMWareStats `
+        -vCenter "192.168.0.9" `
+        -ReportVMHosts `
+        -InfluxDbServer "192.168.0.30" `
+        -InfluxDbName "Cluster" `
+        -InfluxDbPort 8086 `
+        -InfluxDbUser "root" `
+        -InfluxDbPassword "Passord1" `
+        -Credential $cred
+
+    Start-Sleep -Seconds 30
 }
