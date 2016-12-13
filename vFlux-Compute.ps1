@@ -63,18 +63,35 @@ param (
     [Parameter(Mandatory = $False)]
     [switch]$ShowStats,
 
+    [Parameter(Mandatory = $True)]
+    $InfluxDbServer,
+
+    [Parameter(Mandatory = $True)]
+    $InfluxDbPort,
+
+    [Parameter(Mandatory = $True)]
+    $InfluxDbName,
+
+    [Parameter(Mandatory = $True)]
+    $InfluxDbUser,
+
+    [Parameter(Mandatory = $True)]
+    $InfluxDbPassword,
+
+    [Parameter(Mandatory = $True)]
     $Credential
 )
 
 Begin {
 
     ## User-Defined Influx Setup
+    ## TODO: Credential object for Influx
     $InfluxStruct = New-Object -TypeName PSObject -Property @{
-        InfluxDbServer = '1.2.3.4'; #IP Address
-        InfluxDbPort = 8086;
-        InfluxDbName = 'database';
-        InfluxDbUser = 'dbuser';
-        InfluxDbPassword = 'dbpassword';
+        InfluxDbServer = $InfluxDbServer
+        InfluxDbPort = $InfluxDbPort
+        InfluxDbName = $InfluxDbName
+        InfluxDbUser = $InfluxDbUser
+        InfluxDbPassword = $InfluxDbPassword
         MetricsString = '' #emtpy string that we populate later.
     }
 
@@ -243,4 +260,3 @@ Process {
     If ($Logging -eq 'On') { Stop-Transcript }
 }
 }
-
