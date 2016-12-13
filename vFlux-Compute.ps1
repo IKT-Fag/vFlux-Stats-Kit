@@ -217,7 +217,7 @@ Process {
     If($ReportVMHosts) {
 
         ## Desired vSphere metric counters for VMHost performance reporting
-        $EsxStatTypes = 'cpu.usagemhz.average','mem.usage.average','cpu.usage.average','cpu.ready.summation','disk.usage.average','net.usage.average'
+        $EsxStatTypes = 'cpu.usagemhz.average','mem.usage.average','cpu.usage.average','cpu.ready.summation','disk.usage.average','net.usage.average','power.power.average'
 
             ## Iterate through ESXi Host list
             foreach ($vmhost in (Get-VMhost | Where-Object {$_.State -eq "Connected"} | Sort-Object -Property Name)) {
@@ -276,5 +276,6 @@ while ($True)
         -InfluxDbPassword "Passord1" `
         -Credential $cred
 
+    Clear-Host
     Start-Sleep -Seconds 30
 }
